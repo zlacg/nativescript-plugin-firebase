@@ -1,6 +1,7 @@
 <manifest package="org.nativescript.plugins.firebase"
           xmlns:android="http://schemas.android.com/apk/res/android">
 
+  <!-- for Messaging -->
   <application>
     <service android:name=".MyFirebaseMessagingService">
       <intent-filter>

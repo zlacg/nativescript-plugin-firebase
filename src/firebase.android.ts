@@ -1,13 +1,13 @@
 import { DocumentSnapshot, firebase, QuerySnapshot } from "./firebase-common";
 import * as appModule from "tns-core-modules/application";
 import { AndroidActivityResultEventData } from "tns-core-modules/application";
-import * as utils from "tns-core-modules/utils/utils";
+import { ad as AndroidUtils, layout } from "tns-core-modules/utils/utils";
 import lazy from "tns-core-modules/utils/lazy";
-import * as frame from "tns-core-modules/ui/frame";
-import * as fs from "tns-core-modules/file-system";
+import { topmost } from "tns-core-modules/ui/frame";
+import { File } from "tns-core-modules/file-system";
 import { firestore } from "./firebase";
 
-declare const com, org: any;
+declare const android, com, org: any;
 
 firebase._launchNotification = null;
 firebase._cachedDynamicLink = null;
@@ -97,14 +97,14 @@ const dynamicLinksEnabled = lazy(() => typeof(com.google.android.gms.appinvite) 
               if (firebase._dynamicLinkCallback === null) {
                 firebase._cachedDynamicLink = {
                   url: result.getLink().toString(),
-                  matchConfidence: 1,
+                  // matchConfidence: 1,
                   minimumAppVersion: result.getMinimumAppVersion()
                 };
               } else {
                 setTimeout(() => {
                   firebase._dynamicLinkCallback({
                     url: result.getLink().toString(),
-                    matchConfidence: 1,
+                    // matchConfidence: 1,
                     minimumAppVersion: result.getMinimumAppVersion()
                   });
                 });
@@ -126,12 +126,16 @@ firebase.toHashMap = obj => {
       if (obj[property] === null) {
         node.put(property, null);
       } else {
-        if (obj[property] instanceof Date) {
+        // note that the Android Firestore SDK only supports this for 'update' (not for 'set')
+        if (obj[property] === "SERVER_TIMESTAMP") {
+          node.put(property, com.google.firebase.firestore.FieldValue.serverTimestamp());
+        } else if (obj[property] instanceof Date) {
           node.put(property, new java.util.Date(obj[property].getTime()));
         } else if (Array.isArray(obj[property])) {
           node.put(property, firebase.toJavaArray(obj[property]));
         } else {
           switch (typeof obj[property]) {
+            case 'object':
             case 'object':
               node.put(property, firebase.toHashMap(obj[property], node));
               break;
@@ -276,7 +280,7 @@ firebase.init = arg => {
     const runInit = () => {
       arg = arg || {};
 
-      if (typeof(com.google.firebase.database) !== "undefined") {
+      if (typeof(com.google.firebase.database) !== "undefined" && typeof(com.google.firebase.database.ServerValue) !== "undefined") {
         firebase.ServerValue = {
           TIMESTAMP: firebase.toJsObject(com.google.firebase.database.ServerValue.TIMESTAMP)
         };
@@ -576,92 +580,6 @@ firebase._isGooglePlayServicesAvailable = () => {
   return available;
 };
 
-firebase.analytics.logEvent = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.key === undefined) {
-        reject("Argument 'key' is missing");
-        return;
-      }
-
-      const bundle = new android.os.Bundle();
-      if (arg.parameters !== undefined) {
-        for (const p in arg.parameters) {
-          const param = arg.parameters[p];
-          if (param.value !== undefined) {
-            bundle.putString(param.key, param.value);
-          }
-        }
-      }
-
-      com.google.firebase.analytics.FirebaseAnalytics.getInstance(appModule.android.currentContext || com.tns.NativeScriptApplication.getInstance()).logEvent(arg.key, bundle);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.logEvent: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setUserId = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.userId === undefined) {
-        reject("Argument 'userId' is missing");
-        return;
-      }
-
-      com.google.firebase.analytics.FirebaseAnalytics.getInstance(appModule.android.currentContext || com.tns.NativeScriptApplication.getInstance()).setUserId(arg.userId);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setUserId: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setUserProperty = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.key === undefined) {
-        reject("Argument 'key' is missing");
-        return;
-      }
-      if (arg.value === undefined) {
-        reject("Argument 'value' is missing");
-        return;
-      }
-
-      com.google.firebase.analytics.FirebaseAnalytics.getInstance(appModule.android.currentContext || com.tns.NativeScriptApplication.getInstance()).setUserProperty(arg.key, arg.value);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setUserProperty: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setScreenName = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.screenName === undefined) {
-        reject("Argument 'screenName' is missing");
-        return;
-      }
-
-      com.google.firebase.analytics.FirebaseAnalytics.getInstance(appModule.android.currentContext || com.tns.NativeScriptApplication.getInstance()).setCurrentScreen(appModule.android.foregroundActivity, arg.screenName, null);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setScreenName: " + ex);
-      reject(ex);
-    }
-  });
-};
-
 // see https://firebase.google.com/docs/admob/android/quick-start
 firebase.admob.showBanner = arg => {
   return new Promise((resolve, reject) => {
@@ -702,7 +620,7 @@ firebase.admob.showBanner = arg => {
       const ad = firebase.admob._buildAdRequest(settings);
       firebase.admob.adView.loadAd(ad);
 
-      const density = utils.layout.getDisplayDensity(),
+      const density = layout.getDisplayDensity(),
           top = settings.margins.top * density,
           bottom = settings.margins.bottom * density;
 
@@ -727,10 +645,14 @@ firebase.admob.showBanner = arg => {
           android.widget.RelativeLayout.LayoutParams.MATCH_PARENT,
           android.widget.RelativeLayout.LayoutParams.MATCH_PARENT);
 
-      // wrapping it in a timeout makes sure that when this function is loaded from
-      // a Page.loaded event 'frame.topmost()' doesn't resolve to 'undefined'
+      // Wrapping it in a timeout makes sure that when this function is loaded from a Page.loaded event 'frame.topmost()' doesn't resolve to 'undefined'.
+      // Also, in NativeScript 4+ it may be undefined anyway.. so using the appModule in that case.
       setTimeout(() => {
-        frame.topmost().currentPage.android.getParent().addView(adViewLayout, relativeLayoutParamsOuter);
+        if (topmost() !== undefined) {
+          topmost().currentPage.android.getParent().addView(adViewLayout, relativeLayoutParamsOuter);
+        } else {
+          appModule.android.foregroundActivity.getWindow().getDecorView().addView(adViewLayout, relativeLayoutParamsOuter);
+        }
       }, 0);
     } catch (ex) {
       console.log("Error in firebase.admob.showBanner: " + ex);
@@ -1004,7 +926,7 @@ firebase.logout = arg => {
       com.google.firebase.auth.FirebaseAuth.getInstance().signOut();
 
       // also disconnect from Google otherwise ppl can't connect with a different account
-      if (firebase._mGoogleApiClient) {
+      if (firebase._mGoogleApiClient && firebase._mGoogleApiClient.isConnected()) {
         com.google.android.gms.auth.api.Auth.GoogleSignInApi.revokeAccess(firebase._mGoogleApiClient);
       }
 
@@ -1087,6 +1009,10 @@ function toLoginResult(user) {
 firebase.login = arg => {
   return new Promise((resolve, reject) => {
     try {
+      // need these to support using phone auth more than once
+      this.resolve = resolve;
+      this.reject = reject;
+
       if (!firebase._isGooglePlayServicesAvailable()) {
         reject("Google Play services is required for this feature, but not available on this device");
         return;
@@ -1103,10 +1029,10 @@ firebase.login = arg => {
             if (firebase._mGoogleApiClient) {
               com.google.android.gms.auth.api.Auth.GoogleSignInApi.revokeAccess(firebase._mGoogleApiClient);
             }
-            reject("Logging in the user failed. " + (task.getException() && task.getException().getReason ? task.getException().getReason() : task.getException()));
+            this.reject("Logging in the user failed. " + (task.getException() && task.getException().getReason ? task.getException().getReason() : task.getException()));
           } else {
             const user = task.getResult().getUser();
-            resolve(toLoginResult(user));
+            this.resolve(toLoginResult(user));
           }
         }
       });
@@ -1184,10 +1110,6 @@ firebase.login = arg => {
           return;
         }
 
-        // need these to support using phone auth more than once
-        this.resolve = resolve;
-        this.reject = reject;
-
         const OnVerificationStateChangedCallbacks = com.google.firebase.auth.PhoneAuthProvider.OnVerificationStateChangedCallbacks.extend({
           onVerificationCompleted: phoneAuthCredential => {
             firebase._verifyPhoneNumberInProgress = false;
@@ -1236,7 +1158,7 @@ firebase.login = arg => {
             arg.phoneOptions.phoneNumber,
             60, // timeout (in seconds, because of the next argument)
             java.util.concurrent.TimeUnit.SECONDS,
-            appModule.android.foregroundActivity, // or utils.ad.getApplicationContext()
+            appModule.android.foregroundActivity,
             new OnVerificationStateChangedCallbacks());
 
       } else if (arg.type === firebase.LoginType.CUSTOM) {
@@ -1297,7 +1219,7 @@ firebase.login = arg => {
         if (arg.facebookOptions && arg.facebookOptions.scope) {
           scope = arg.facebookOptions.scope;
         }
-        const permissions = utils.ad.collections.stringArrayToStringSet(scope);
+        const permissions = AndroidUtils.collections.stringArrayToStringSet(scope);
 
         const activity = appModule.android.foregroundActivity;
         fbLoginManager.logInWithReadPermissions(activity, permissions);
@@ -1308,8 +1230,8 @@ firebase.login = arg => {
           return;
         }
 
-        const clientStringId = utils.ad.resources.getStringId("default_web_client_id");
-        const clientId = utils.ad.getApplicationContext().getResources().getString(clientStringId);
+        const clientStringId = AndroidUtils.resources.getStringId("default_web_client_id");
+        const clientId = AndroidUtils.getApplicationContext().getResources().getString(clientStringId);
 
         // Configure Google Sign In
         const googleSignInOptionsBuilder = new com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -1756,7 +1678,6 @@ firebase.removeEventListeners = (listeners, path) => {
       const ref = firebase.instance.child(path);
       for (let i = 0; i < listeners.length; i++) {
         const listener = listeners[i];
-        console.log("Removing listener at path " + path + ": " + listener);
         ref.removeEventListener(listener);
       }
       resolve();
@@ -1997,7 +1918,7 @@ firebase.uploadFile = arg => {
             updated: new Date(metadata.getUpdatedTimeMillis()),
             bucket: metadata.getBucket(),
             size: metadata.getSizeBytes(),
-            url: metadata.getDownloadUrl().toString()
+            // url: metadata.getDownloadUrl().toString()
           });
         }
       });
@@ -2050,7 +1971,7 @@ firebase.uploadFile = arg => {
 
       } else if (arg.localFullPath) {
 
-        if (!fs.File.exists(arg.localFullPath)) {
+        if (!File.exists(arg.localFullPath)) {
           reject("File does not exist: " + arg.localFullPath);
           return;
         }
@@ -2201,6 +2122,7 @@ firebase.subscribeToTopic = topicName => {
         return;
       }
 
+      // TODO since Cloud Messaging 17.0.0 this returns a Task instead of void (so we can resolve onSuccess)
       com.google.firebase.messaging.FirebaseMessaging.getInstance().subscribeToTopic(topicName);
       resolve();
     } catch (ex) {

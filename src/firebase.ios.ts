@@ -1,9 +1,8 @@
 import { firebase, DocumentSnapshot, QuerySnapshot } from "./firebase-common";
 import * as application from "tns-core-modules/application";
-import * as applicationSettings from "tns-core-modules/application-settings";
-import * as utils from "tns-core-modules/utils/utils";
-import * as types from "tns-core-modules/utils/types";
-import * as platform from "tns-core-modules/platform";
+import { ios as iOSUtils } from "tns-core-modules/utils/utils";
+import { getClass } from "tns-core-modules/utils/types";
+import { device } from "tns-core-modules/platform";
 import { DeviceType } from "tns-core-modules/ui/enums";
 import { firestore } from "./firebase";
 
@@ -31,8 +30,8 @@ const invokeOnRunLoop = (() => {
 })();
 
 firebase._addObserver = (eventName, callback) => {
-  const queue = utils.ios.getter(NSOperationQueue, NSOperationQueue.mainQueue);
-  return utils.ios.getter(NSNotificationCenter, NSNotificationCenter.defaultCenter).addObserverForNameObjectQueueUsingBlock(eventName, null, queue, callback);
+  const queue = iOSUtils.getter(NSOperationQueue, NSOperationQueue.mainQueue);
+  return iOSUtils.getter(NSNotificationCenter, NSNotificationCenter.defaultCenter).addObserverForNameObjectQueueUsingBlock(eventName, null, queue, callback);
 };
 
 const handleRemoteNotification = (app, userInfo) => {
@@ -57,7 +56,7 @@ function addBackgroundRemoteNotificationHandler(appDelegate) {
   if (typeof(FIRMessaging) !== "undefined") {
     appDelegate.prototype.applicationDidReceiveRemoteNotificationFetchCompletionHandler = (app, notification, completionHandler) => {
       // Pass notification to auth and check if they can handle it (in case phone auth is being used), see https://firebase.google.com/docs/auth/ios/phone-auth
-      if (FIRAuth.auth().canHandleNotification(notification)) {
+      if (firebase._configured && FIRAuth.auth().canHandleNotification(notification)) {
         completionHandler(UIBackgroundFetchResult.NoData);
         return;
       }
@@ -120,7 +119,7 @@ firebase.addAppDelegateMethods = appDelegate => {
           console.log(">>> dynamicLink.url.absoluteString: " + dynamicLink.url.absoluteString);
           firebase._cachedDynamicLink = {
             url: dynamicLink.url.absoluteString,
-            matchConfidence: dynamicLink.matchConfidence,
+            // matchConfidence: dynamicLink.matchConfidence,
             minimumAppVersion: dynamicLink.minimumAppVersion
           };
           result = true;
@@ -158,13 +157,13 @@ firebase.addAppDelegateMethods = appDelegate => {
             if (firebase._dynamicLinkCallback) {
               firebase._dynamicLinkCallback({
                 url: dynamicLink.url.absoluteString,
-                matchConfidence: dynamicLink.matchConfidence,
+                // matchConfidence: dynamicLink.matchConfidence,
                 minimumAppVersion: dynamicLink.minimumAppVersion
               });
             } else {
               firebase._cachedDynamicLink = {
                 url: dynamicLink.url.absoluteString,
-                matchConfidence: dynamicLink.matchConfidence,
+                // matchConfidence: dynamicLink.matchConfidence,
                 minimumAppVersion: dynamicLink.minimumAppVersion
               };
             }
@@ -231,13 +230,13 @@ firebase.addAppDelegateMethods = appDelegate => {
               if (firebase._dynamicLinkCallback) {
                 firebase._dynamicLinkCallback({
                   url: dynamicLink.url.absoluteString,
-                  matchConfidence: dynamicLink.matchConfidence,
+                  // matchConfidence: dynamicLink.matchConfidence,
                   minimumAppVersion: dynamicLink.minimumAppVersion
                 });
               } else {
                 firebase._cachedDynamicLink = {
                   url: dynamicLink.url.absoluteString,
-                  matchConfidence: dynamicLink.matchConfidence,
+                  // matchConfidence: dynamicLink.matchConfidence,
                   minimumAppVersion: dynamicLink.minimumAppVersion
                 };
               }
@@ -387,7 +386,7 @@ firebase.unregisterForPushNotifications = () => {
         reject("Enable FIRMessaging in Podfile first");
         return;
       }
-      utils.ios.getter(UIApplication, UIApplication.sharedApplication).unregisterForRemoteNotifications();
+      iOSUtils.getter(UIApplication, UIApplication.sharedApplication).unregisterForRemoteNotifications();
       resolve();
     } catch (ex) {
       console.log("Error in firebase.unregisterForPushNotifications: " + ex);
@@ -397,7 +396,7 @@ firebase.unregisterForPushNotifications = () => {
 };
 
 firebase._processPendingNotifications = () => {
-  const app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
+  const app = iOSUtils.getter(UIApplication, UIApplication.sharedApplication);
   if (!app) {
     application.on("launch", () => {
       firebase._processPendingNotifications();
@@ -413,7 +412,13 @@ firebase._processPendingNotifications = () => {
         userInfoJSON.body = userInfoJSON.aps.alert.body;
       }
       // also, to make the ts.d happy copy all properties to a data element
-      userInfoJSON.data = userInfoJSON;
+      if (!userInfoJSON.hasOwnProperty('data')) {
+        userInfoJSON.data = {};
+      }
+      Object.keys(userInfoJSON).forEach((key) => {
+        if (key !== 'data') userInfoJSON.data[key] = userInfoJSON[key];
+      });
+
       // cleanup
       userInfoJSON.aps = undefined;
       firebase._receivedNotificationCallback(userInfoJSON);
@@ -454,7 +459,7 @@ firebase._onTokenRefreshNotification = token => {
 firebase._registerForRemoteNotificationsRanThisSession = false;
 
 firebase._registerForRemoteNotifications = () => {
-  let app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
+  let app = iOSUtils.getter(UIApplication, UIApplication.sharedApplication);
   if (!app) {
     application.on("launch", () => {
       firebase._registerForRemoteNotifications();
@@ -467,14 +472,13 @@ firebase._registerForRemoteNotifications = () => {
   }
   firebase._registerForRemoteNotificationsRanThisSession = true;
 
-  if (parseInt(platform.device.osVersion) >= 10) {
+  if (parseInt(device.osVersion) >= 10) {
     const authorizationOptions = UNAuthorizationOptions.Alert | UNAuthorizationOptions.Sound | UNAuthorizationOptions.Badge;
-    const curNotCenter = utils.ios.getter(UNUserNotificationCenter, UNUserNotificationCenter.currentNotificationCenter);
+    const curNotCenter = iOSUtils.getter(UNUserNotificationCenter, UNUserNotificationCenter.currentNotificationCenter);
     curNotCenter.requestAuthorizationWithOptionsCompletionHandler(authorizationOptions, (granted, error) => {
       if (!error) {
-        // applicationSettings.setBoolean("registered", true);
         if (app === null) {
-          app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
+          app = iOSUtils.getter(UIApplication, UIApplication.sharedApplication);
         }
         if (app !== null) {
           invokeOnRunLoop(() => {
@@ -509,7 +513,7 @@ firebase._registerForRemoteNotifications = () => {
         userInfoJSON.body = asJs.body;
       }
 
-      const app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
+      const app = iOSUtils.getter(UIApplication, UIApplication.sharedApplication);
       if (app.applicationState === UIApplicationState.Active) {
         userInfoJSON.foreground = true;
         if (firebase._receivedNotificationCallback !== null) {
@@ -519,7 +523,7 @@ firebase._registerForRemoteNotifications = () => {
         userInfoJSON.foreground = false;
       }
     });
-    FIRMessaging.messaging().remoteMessageDelegate = firebase._firebaseRemoteMessageDelegate;
+    FIRMessaging.messaging().delegate = firebase._firebaseRemoteMessageDelegate;
 
   } else {
     const notificationTypes = UIUserNotificationType.Alert | UIUserNotificationType.Badge | UIUserNotificationType.Sound | UIUserNotificationActivationMode.Background;
@@ -554,11 +558,7 @@ function prepAppDelegate() {
     firebase._addObserver("com.firebase.iid.notif.refresh-token", notification => firebase._onTokenRefreshNotification(notification.object));
 
     firebase._addObserver(UIApplicationDidFinishLaunchingNotification, appNotification => {
-      // guarded this with a preference so the popup "this app wants to send notifications"
-      // is not shown until the dev intentionally wired a listener (see other usages of _registerForRemoteNotifications())
-      if (applicationSettings.getBoolean("registered", false)) {
-        firebase._registerForRemoteNotifications();
-      }
+      firebase._registerForRemoteNotifications();
     });
 
     firebase._addObserver(UIApplicationDidBecomeActiveNotification, appNotification => {
@@ -619,7 +619,7 @@ firebase.toJsObject = objCObj => {
         continue;
       }
 
-      switch (types.getClass(val)) {
+      switch (getClass(val)) {
         case 'NSArray':
         case 'NSMutableArray':
           node[key] = firebase.toJsObject(val);
@@ -641,6 +641,9 @@ firebase.toJsObject = objCObj => {
         case 'Date':
           node[key] = new Date(val);
           break;
+        case 'FIRTimestamp':
+          node[key] = val.dateValue();
+          break;
         case 'FIRDocumentReference':
           const path = (<FIRDocumentReference>val).path;
           const lastSlashIndex = path.lastIndexOf("/");
@@ -653,7 +656,7 @@ firebase.toJsObject = objCObj => {
           };
           break;
         default:
-          console.log("Please report this at https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues: iOS toJsObject is missing a converter for class '" + types.getClass(val) + "'. Casting to String as a fallback.");
+          console.log("Please report this at https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues: iOS toJsObject is missing a converter for class '" + getClass(val) + "'. Casting to String as a fallback.");
           node[key] = String(val);
       }
     }
@@ -693,7 +696,7 @@ firebase.init = arg => {
 
       // if deeplinks are used, then for this scheme to work the use must have added the bundle as a scheme to their plist (this is in our docs)
       if (FIROptions.defaultOptions() !== null) {
-        FIROptions.defaultOptions().deepLinkURLScheme = utils.ios.getter(NSBundle, NSBundle.mainBundle).bundleIdentifier;
+        FIROptions.defaultOptions().deepLinkURLScheme = iOSUtils.getter(NSBundle, NSBundle.mainBundle).bundleIdentifier;
       }
 
       if (!firebase._configured) {
@@ -712,6 +715,7 @@ firebase.init = arg => {
         if (arg.persist === false) {
           const fIRFirestoreSettings = FIRFirestoreSettings.new();
           fIRFirestoreSettings.persistenceEnabled = false;
+          fIRFirestoreSettings.timestampsInSnapshotsEnabled = true;
           FIRFirestore.firestore().settings = fIRFirestoreSettings;
         }
       }
@@ -787,92 +791,6 @@ firebase.init = arg => {
   });
 };
 
-firebase.analytics.logEvent = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.key === undefined) {
-        reject("Argument 'key' is missing");
-        return;
-      }
-
-      const dic: any = NSMutableDictionary.new();
-      if (arg.parameters !== undefined) {
-        for (let p in arg.parameters) {
-          const param = arg.parameters[p];
-          if (param.value !== undefined) {
-            dic.setObjectForKey(param.value, param.key);
-          }
-        }
-      }
-
-      FIRAnalytics.logEventWithNameParameters(arg.key, dic);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.logEvent: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setUserId = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.userId === undefined) {
-        reject("Argument 'userId' is missing");
-        return;
-      }
-
-      FIRAnalytics.setUserID(arg.userId);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setUserId: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setUserProperty = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.key === undefined) {
-        reject("Argument 'key' is missing");
-        return;
-      }
-      if (arg.value === undefined) {
-        reject("Argument 'value' is missing");
-        return;
-      }
-
-      FIRAnalytics.setUserPropertyStringForName(arg.value, arg.key);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setUserProperty: " + ex);
-      reject(ex);
-    }
-  });
-};
-
-firebase.analytics.setScreenName = arg => {
-  return new Promise((resolve, reject) => {
-    try {
-      if (arg.screenName === undefined) {
-        reject("Argument 'screenName' is missing");
-        return;
-      }
-
-      FIRAnalytics.setScreenNameScreenClass(arg.screenName, null);
-
-      resolve();
-    } catch (ex) {
-      console.log("Error in firebase.analytics.setScreenName: " + ex);
-      reject(ex);
-    }
-  });
-};
-
 firebase.admob.showBanner = arg => {
   return new Promise((resolve, reject) => {
     try {
@@ -886,7 +804,7 @@ firebase.admob.showBanner = arg => {
         firebase.admob.adView = null;
       }
 
-      firebase.admob.defaults.view = utils.ios.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController.view;
+      firebase.admob.defaults.view = iOSUtils.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController.view;
       const settings = firebase.merge(arg, firebase.admob.defaults);
       const view = settings.view;
       const bannerType = firebase.admob._getBannerType(settings.size);
@@ -920,8 +838,8 @@ firebase.admob.showBanner = arg => {
         adRequest.keywords = settings.keywords;
       }
 
-      firebase.admob.adView.rootViewController = utils.ios.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController;
-      // var statusbarFrame = utils.ios.getter(UIApplication, UIApplication.sharedApplication).statusBarFrame;
+      firebase.admob.adView.rootViewController = iOSUtils.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController;
+      // var statusbarFrame = iOSUtils.getter(UIApplication, UIApplication.sharedApplication).statusBarFrame;
 
       firebase.admob.adView.loadRequest(adRequest);
 
@@ -930,7 +848,7 @@ firebase.admob.showBanner = arg => {
 
       view.addSubview(firebase.admob.adView);
 
-      // support rotation events (TODO we don't want to add multiple handlers)
+      // support rotation events (TODO we don't want to add multiple handlers, also: remove with .off!).. could also just have the app handle this
       application.on(application.orientationChangedEvent, data => {
         if (firebase.admob.adView !== null) {
           firebase.admob.hideBanner().then(res => {
@@ -961,10 +879,10 @@ firebase.admob.showInterstitial = arg => {
       // with interstitials you MUST wait for the ad to load before showing it, so requiring this delegate
       let delegate = GADInterstitialDelegateImpl.new().initWithCallback((ad: GADInterstitial, error: GADRequestError) => {
         if (error) {
-          reject(error); // TODO this is a platform-specific type
+          reject(error.localizedDescription);
         } else {
           // now we can safely show it
-          firebase.admob.interstitialView.presentFromRootViewController(utils.ios.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController);
+          firebase.admob.interstitialView.presentFromRootViewController(iOSUtils.getter(UIApplication, UIApplication.sharedApplication).keyWindow.rootViewController);
           resolve();
         }
         CFRelease(delegate);
@@ -1034,8 +952,8 @@ firebase.admob._getBannerType = size => {
     // return kGADAdSizeSkyscraper;
     return {"size": {"width": 120, "height": 600}, "flags": 0};
   } else if (size === firebase.admob.AD_SIZE.SMART_BANNER || size === firebase.admob.AD_SIZE.FLUID) {
-    const orientation = utils.ios.getter(UIDevice, UIDevice.currentDevice).orientation;
-    const isIPad = platform.device.deviceType === DeviceType.Tablet;
+    const orientation = iOSUtils.getter(UIDevice, UIDevice.currentDevice).orientation;
+    const isIPad = device.deviceType === DeviceType.Tablet;
     if (orientation === UIDeviceOrientation.Portrait || orientation === UIDeviceOrientation.PortraitUpsideDown) {
       // return kGADAdSizeSmartBannerPortrait;
       return {"size": {"width": 0, "height": 0, "smartHeight": isIPad ? 90 : 50}, "flags": 18};
@@ -1193,15 +1111,17 @@ function toLoginResult(user) {
   }
 
   const providers = [];
-  for (let i = 0, l = user.providerData.count; i < l; i++) {
-    const firUserInfo = user.providerData.objectAtIndex(i);
-    const pid = firUserInfo.valueForKey("providerID");
-    // the app may have dropped Facebook support, so check if the native class is still there
-    if (pid === 'facebook.com' && typeof(FBSDKAccessToken) !== "undefined") { // FIRFacebookAuthProviderID
-      const fbCurrentAccessToken = FBSDKAccessToken.currentAccessToken();
-      providers.push({id: pid, token: fbCurrentAccessToken ? fbCurrentAccessToken.tokenString : null});
-    } else {
-      providers.push({id: pid});
+  if (user.providerData) {
+    for (let i = 0, l = user.providerData.count; i < l; i++) {
+      const firUserInfo = user.providerData.objectAtIndex(i);
+      const pid = firUserInfo.valueForKey("providerID");
+      // the app may have dropped Facebook support, so check if the native class is still there
+      if (pid === 'facebook.com' && typeof(FBSDKAccessToken) !== "undefined") { // FIRFacebookAuthProviderID
+        const fbCurrentAccessToken = FBSDKAccessToken.currentAccessToken();
+        providers.push({id: pid, token: fbCurrentAccessToken ? fbCurrentAccessToken.tokenString : null});
+      } else {
+        providers.push({id: pid});
+      }
     }
   }
 
@@ -1238,7 +1158,7 @@ firebase.getAuthToken = arg => {
             resolve(token);
           }
         };
-        user.getTokenForcingRefreshCompletion(arg.forceRefresh, onCompletion);
+        user.getIDTokenForcingRefreshCompletion(arg.forceRefresh, onCompletion);
       } else {
         reject("Log in first");
       }
@@ -1252,7 +1172,7 @@ firebase.getAuthToken = arg => {
 firebase.login = arg => {
   return new Promise((resolve, reject) => {
     try {
-      const onCompletion = (user: FIRUser, error?: NSError) => {
+      const onCompletionWithUser = (user: FIRUser, error?: NSError) => {
         if (error) {
           // also disconnect from Google otherwise ppl can't connect with a different account
           if (typeof(GIDSignIn) !== "undefined") {
@@ -1269,6 +1189,10 @@ firebase.login = arg => {
         }
       };
 
+      const onCompletionWithAuthResult = (authResult: FIRAuthDataResult, error?: NSError) => {
+        onCompletionWithUser(authResult && authResult.user, error);
+      };
+
       const fAuth = FIRAuth.auth();
       if (fAuth === null) {
         reject("Run init() first!");
@@ -1278,7 +1202,7 @@ firebase.login = arg => {
       firebase.moveLoginOptionsToObjects(arg);
 
       if (arg.type === firebase.LoginType.ANONYMOUS) {
-        fAuth.signInAnonymouslyWithCompletion(onCompletion);
+        fAuth.signInAnonymouslyWithCompletion(onCompletionWithAuthResult);
 
       } else if (arg.type === firebase.LoginType.PASSWORD) {
         if (!arg.passwordOptions || !arg.passwordOptions.email || !arg.passwordOptions.password) {
@@ -1293,15 +1217,15 @@ firebase.login = arg => {
             if (error) {
               // ignore, as this one was probably already linked, so just return the user
               log("--- linking error: " + error.localizedDescription);
-              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
             } else {
-              onCompletion(user);
+              onCompletionWithUser(user);
             }
           };
           fAuth.currentUser.linkWithCredentialCompletion(fIRAuthCredential, onCompletionLink);
 
         } else {
-          fAuth.signInWithEmailPasswordCompletion(arg.passwordOptions.email, arg.passwordOptions.password, onCompletion);
+          fAuth.signInWithEmailPasswordCompletion(arg.passwordOptions.email, arg.passwordOptions.password, onCompletionWithAuthResult);
         }
 
       } else if (arg.type === firebase.LoginType.EMAIL_LINK) {
@@ -1347,25 +1271,26 @@ firebase.login = arg => {
           return;
         }
 
-        FIRPhoneAuthProvider.provider().verifyPhoneNumberCompletion(arg.phoneOptions.phoneNumber, (verificationID: string, error: NSError) => {
+        FIRPhoneAuthProvider.provider().verifyPhoneNumberUIDelegateCompletion(arg.phoneOptions.phoneNumber, null, (verificationID: string, error: NSError) => {
           if (error) {
             reject(error.localizedDescription);
             return;
           }
+
           firebase.requestPhoneAuthVerificationCode(userResponse => {
             const fIRAuthCredential = FIRPhoneAuthProvider.provider().credentialWithVerificationIDVerificationCode(verificationID, userResponse);
             if (fAuth.currentUser) {
               const onCompletionLink = (user, error) => {
                 if (error) {
                   // ignore, as this one was probably already linked, so just return the user
-                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
                 } else {
-                  onCompletion(user);
+                  onCompletionWithUser(user);
                 }
               };
               fAuth.currentUser.linkWithCredentialCompletion(fIRAuthCredential, onCompletionLink);
             } else {
-              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
             }
           }, arg.phoneOptions.verificationPrompt);
         });
@@ -1377,12 +1302,12 @@ firebase.login = arg => {
         }
 
         if (arg.customOptions.token) {
-          fAuth.signInWithCustomTokenCompletion(arg.customOptions.token, onCompletion);
+          fAuth.signInWithCustomTokenCompletion(arg.customOptions.token, onCompletionWithAuthResult);
         } else if (arg.customOptions.tokenProviderFn) {
           arg.customOptions.tokenProviderFn()
               .then(
                   token => {
-                    fAuth.signInWithCustomTokenCompletion(token, onCompletion);
+                    fAuth.signInWithCustomTokenCompletion(token, onCompletionWithAuthResult);
                   },
                   error => {
                     reject(error);
@@ -1412,15 +1337,15 @@ firebase.login = arg => {
                 if (error) {
                   // ignore, as this one was probably already linked, so just return the user
                   log("--- linking error: " + error.localizedDescription);
-                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
                 } else {
-                  onCompletion(user);
+                  onCompletionWithUser(user);
                 }
               };
               fAuth.currentUser.linkWithCredentialCompletion(fIRAuthCredential, onCompletionLink);
 
             } else {
-              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
             }
           }
         };
@@ -1446,7 +1371,8 @@ firebase.login = arg => {
         }
 
         const sIn = GIDSignIn.sharedInstance();
-        sIn.uiDelegate = application.ios.rootController;
+        // allow custom controller for variety of use cases
+        sIn.uiDelegate = arg.ios && arg.ios.controller ? arg.ios.controller : application.ios.rootController;
         sIn.clientID = FIRApp.defaultApp().options.clientID;
 
         if (arg.googleOptions && arg.googleOptions.hostedDomain) {
@@ -1465,15 +1391,15 @@ firebase.login = arg => {
               const onCompletionLink = (user, error) => {
                 if (error) {
                   // ignore, as this one was probably already linked, so just return the user
-                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+                  fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
                 } else {
-                  onCompletion(user);
+                  onCompletionWithUser(user);
                 }
               };
               fAuth.currentUser.linkWithCredentialCompletion(fIRAuthCredential, onCompletionLink);
 
             } else {
-              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletion);
+              fAuth.signInWithCredentialCompletion(fIRAuthCredential, onCompletionWithUser);
             }
 
           } else {
@@ -1639,12 +1565,12 @@ firebase.changePassword = arg => {
 firebase.createUser = arg => {
   return new Promise((resolve, reject) => {
     try {
-      const onCompletion = (user: FIRUser, error: NSError) => {
+      const onCompletion = (authResult: FIRAuthDataResult, error: NSError) => {
         if (error) {
           reject(error.localizedDescription);
         } else {
           resolve({
-            key: user.uid
+            key: authResult.user.uid
           });
         }
       };
@@ -1988,15 +1914,15 @@ firebase.remove = path => {
   });
 };
 
-function getStorageRef(reject, arg) {
+function getStorageRef(reject, arg): FIRStorageReference {
   if (typeof(FIRStorage) === "undefined") {
     reject("Uncomment Storage in the plugin's Podfile first");
-    return;
+    return undefined;
   }
 
   if (!arg.remoteFullPath) {
     reject("remoteFullPath is mandatory");
-    return;
+    return undefined;
   }
 
   return arg.bucket ? FIRStorage.storage().referenceForURL(arg.bucket) : firebase.storage;
@@ -2006,13 +1932,13 @@ firebase.uploadFile = arg => {
   return new Promise((resolve, reject) => {
     try {
 
-      const onCompletion = (metadata, error) => {
+      const onCompletion = (metadata: FIRStorageMetadata, error: NSError) => {
         if (error) {
           reject(error.localizedDescription);
         } else {
           resolve({
             name: metadata.name,
-            url: metadata.downloadURL() ? metadata.downloadURL().absoluteString : null,
+            // url: metadata.downloadURL() ? metadata.downloadURL().absoluteString : null,
             contentType: metadata.contentType,
             created: metadata.timeCreated,
             updated: metadata.updated,
@@ -2022,7 +1948,7 @@ firebase.uploadFile = arg => {
         }
       };
 
-      const storageRef = getStorageRef(reject, arg);
+      const storageRef: FIRStorageReference = getStorageRef(reject, arg);
 
       if (!storageRef) {
         return;
@@ -2187,6 +2113,8 @@ firebase.subscribeToTopic = topicName => {
       if (topicName.indexOf("/topics/") === -1) {
         topicName = "/topics/" + topicName;
       }
+
+      // TODO there's also (un)subscribeToTopicCompletion (resolve when completed).. perhaps this has been added to Android as well
       FIRMessaging.messaging().subscribeToTopic(topicName);
       resolve();
     } catch (ex) {
@@ -2485,12 +2413,14 @@ firebase.firestore.set = (collectionPath: string, documentPath: string, document
         return;
       }
 
+      fixServerTimestamp(document);
+
       const docRef: FIRDocumentReference = FIRFirestore.firestore()
           .collectionWithPath(collectionPath)
           .documentWithPath(documentPath);
 
       if (options && options.merge) {
-        docRef.setDataOptionsCompletion(document, FIRSetOptions.merge(), (error: NSError) => {
+        docRef.setDataMergeCompletion(document, true, (error: NSError) => {
           if (error) {
             reject(error.localizedDescription);
           } else {
@@ -2515,6 +2445,14 @@ firebase.firestore.set = (collectionPath: string, documentPath: string, document
   });
 };
 
+function fixServerTimestamp(item) {
+  for (let k in item) {
+    if (item.hasOwnProperty(k) && item[k] === "SERVER_TIMESTAMP") {
+      item[k] = FIRFieldValue.fieldValueForServerTimestamp();
+    }
+  }
+}
+
 firebase.firestore.update = (collectionPath: string, documentPath: string, document: any): Promise<void> => {
   return new Promise((resolve, reject) => {
     try {
@@ -2522,6 +2460,8 @@ firebase.firestore.update = (collectionPath: string, documentPath: string, docum
         reject("Make sure 'Firebase/Firestore' is in the plugin's Podfile");
         return;
       }
+
+      fixServerTimestamp(document);
 
       const docRef: FIRDocumentReference = FIRFirestore.firestore()
           .collectionWithPath(collectionPath)
@@ -2763,16 +2703,13 @@ class FIRMessagingDelegateImpl extends NSObject implements FIRMessagingDelegate 
     return this;
   }
 
-  public applicationReceivedRemoteMessage(remoteMessage: FIRMessagingRemoteMessage): void {
-    this.callback(remoteMessage.appData);
-  }
-
   public messagingDidReceiveMessage(messaging: FIRMessaging, remoteMessage: FIRMessagingRemoteMessage): void {
+    console.log(">> fcm message received");
     this.callback(remoteMessage.appData);
   }
 
-  public messagingDidRefreshRegistrationToken(messaging: FIRMessaging, fcmToken: string): void {
-    console.log(">> fcmToken refreshed: " + fcmToken);
+  public messagingDidReceiveRegistrationToken(messaging: FIRMessaging, fcmToken: string): void {
+    console.log(">> fcmToken received: " + fcmToken);
     firebase._onTokenRefreshNotification(fcmToken);
   }
 }
