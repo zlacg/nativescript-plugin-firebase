@@ -5,10 +5,23 @@ import { isIOS } from "tns-core-modules/platform";
 import { AddEventListenerResult, User } from "nativescript-plugin-firebase";
 import * as fs from "tns-core-modules/file-system";
 
-const firebase = require("nativescript-plugin-firebase");
+import * as firebase from"nativescript-plugin-firebase";
 const firebaseWebApi = require("nativescript-plugin-firebase/app");
 
-declare const assert: any;
+declare const Crashlytics: any;
+
+const getCircularReplacer = () => {
+  const seen = new WeakSet;
+  return (key, value) => {
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+    }
+    return value;
+  };
+};
 
 export class HelloWorldModel extends Observable {
 
@@ -335,7 +348,7 @@ export class HelloWorldModel extends Observable {
         setTimeout(() => {
           alert({
             title: "Dynamic Link!",
-            message: result,
+            message: JSON.stringify(result),
             okButtonText: "Awesome!"
           });
         }, 500);
@@ -350,7 +363,7 @@ export class HelloWorldModel extends Observable {
     );
   }
 
-  public doLogAnayticsEvent(): void {
+  public doLogAnalyticsEvent(): void {
     firebase.analytics.logEvent({
       // see https://firebase.google.com/docs/reference/android/com/google/firebase/analytics/FirebaseAnalytics.Event.html
       key: "add_to_cart",
@@ -364,6 +377,7 @@ export class HelloWorldModel extends Observable {
         }]
     }).then(
         () => {
+          console.log("Analytics event logged");
           alert({
             title: "Analytics event pushed",
             okButtonText: "Awesome :)"
@@ -407,9 +421,9 @@ export class HelloWorldModel extends Observable {
     this.setScreenName("Screen B");
   }
 
-  private setScreenName(name): void {
+  private setScreenName(screenName): void {
     firebase.analytics.setScreenName({
-      screenName: name
+      screenName
     }).then(
         () => {
           alert({
@@ -528,11 +542,13 @@ export class HelloWorldModel extends Observable {
     );
     firebase.addOnMessageReceivedCallback(
         message => {
-          alert({
-            title: "Push message!",
-            message: (message.title !== undefined ? message.title : ""),
-            okButtonText: "Sw33t"
-          });
+          console.log("------------------- push message received: " + JSON.stringify(message, getCircularReplacer()));
+
+          // alert({
+          //   title: "Push message!",
+          //   message: (message.title !== undefined ? message.title : ""),
+          //   okButtonText: "Sw33t"
+          // });
         }
     ).then(() => {
       console.log("Added addOnMessageReceivedCallback");
@@ -553,8 +569,11 @@ export class HelloWorldModel extends Observable {
   }
 
   public doGetRemoteConfig(): void {
+    // TODO downgrade to 3.4 and see if we get logging and alerts.. do this before publishing (the otherwise finished) 5.3.0 version
+    // .. hmm doesn't look like it... and neither is disabling crash reporting
+    console.log(">>> doGetRemoteConfig");
     firebase.getRemoteConfig({
-      developerMode: false,
+      developerMode: true,
       cacheExpirationSeconds: 600, // 10 minutes, default is 12 hours
       properties: [{
         "key": "holiday_promo_enabled",
@@ -582,6 +601,7 @@ export class HelloWorldModel extends Observable {
         }]
     }).then(
         result => {
+          console.log("remote config fetched: " + JSON.stringify(result.properties));
           alert({
             title: `Fetched at ${result.lastFetch} ${result.throttled ? '(throttled)' : ''}`,
             message: JSON.stringify(result.properties),
@@ -1281,7 +1301,7 @@ export class HelloWorldModel extends Observable {
   public doUploadFile(): void {
     // let's first create a File object using the tns file module
     const appPath = fs.knownFolders.currentApp().path;
-    const logoPath = appPath + "/res/telerik-logo.png";
+    const logoPath = appPath + "/images/telerik-logo.png";
 
     firebase.uploadFile({
       remoteFullPath: 'uploads/images/telerik-logo-uploaded.png',
@@ -1339,6 +1359,7 @@ export class HelloWorldModel extends Observable {
       remoteFullPath: 'uploads/images/telerik-logo-uploaded.png'
     }).then(
         theUrl => {
+          console.log("Download url: " + theUrl);
           alert({
             title: "File download URL determined",
             message: "You can download the file at: " + theUrl,
@@ -1542,7 +1563,7 @@ export class HelloWorldModel extends Observable {
   }
 
   public doForceCrashIOS(): void {
-    assert(false);
+    Crashlytics.sharedInstance().crash();
   }
 
   public doForceCrashAndroid(): void {

@@ -129,64 +129,136 @@ function askAndroidPromptResult(result) {
 function promptQuestions() {
     prompt.get([{
         name: 'firestore',
-        description: 'Are you using Cloud Firestore (y/n)',
+        description: 'Are you using Cloud Firestore? (y/n)',
         default: 'n'
     }, {
         name: 'realtimedb',
-        description: 'Are you using Realtime DB (y/n)',
+        description: 'Are you using Realtime DB? (y/n)',
         default: 'n'
     }, {
         name: 'remote_config',
-        description: 'Are you using Firebase RemoteConfig (y/n)',
+        description: 'Are you using Firebase RemoteConfig? (y/n)',
         default: 'n'
     }, {
         name: 'messaging',
-        description: 'Are you using Firebase Messaging (y/n)',
+        description: 'Are you using Firebase Messaging? (y/n)',
+        default: 'n'
+    }, {
+        name: 'crashlytics',
+        description: 'Are you using Firebase Crashlytics? (y/n)',
         default: 'n'
     }, {
         name: 'crash_reporting',
-        description: 'Are you using Firebase Crash Reporting (y/n)',
+        description: 'Are you using Firebase Crash Reporting? (answer "n" if you want to use Crashlytics instead) (y/n)',
         default: 'n'
     }, {
         name: 'storage',
-        description: 'Are you using Firebase Storage (y/n)',
+        description: 'Are you using Firebase Storage? (y/n)',
         default: 'n'
     }, {
         name: 'facebook_auth',
-        description: 'Are you using Firebase Facebook Authentication (y/n)',
+        description: 'Are you using Firebase Facebook Authentication? (y/n)',
         default: 'n'
     }, {
         name: 'google_auth',
-        description: 'Are you using Firebase Google Authentication (y/n)',
+        description: 'Are you using Firebase Google Authentication? (y/n)',
         default: 'n'
     }, {
-      name: 'admob',
-      description: 'Are you using AdMob (y/n)',
-      default: 'n'
+        name: 'admob',
+        description: 'Are you using AdMob? (y/n)',
+        default: 'n'
     }, {
         name: 'invites',
-        description: 'Are you using Firebase Invites and/or Dynamic Links (y/n)',
+        description: 'Are you using Firebase Invites and/or Dynamic Links? (y/n)',
         default: 'n'
+    }, {
+      name: 'ml_kit',
+      description: 'Are you using ML Kit? (y/n)',
+      default: 'n'
     }], function (err, result) {
         if (err) {
             return console.log(err);
         }
-        mergeConfig(result);
-        promptQuestionsResult(result);
-        askSaveConfigPrompt();
+        if (!isSelected(result.ml_kit)) {
+            mergeConfig(result);
+            promptQuestionsResult(result);
+            askSaveConfigPrompt();
+        } else {
+            prompt.get([{
+                name: 'ml_kit_text_recognition',
+                description: 'With Ml Kit, do you want to recognize text? (y/n)',
+                default: 'n'
+            }, {
+                name: 'ml_kit_barcode_scanning',
+                description: 'With Ml Kit, do you want to scan barcodes? (y/n)',
+                default: 'n'
+            }, {
+                name: 'ml_kit_face_detection',
+                description: 'With Ml Kit, do you want to detect faces? (y/n)',
+                default: 'n'
+            }, {
+                name: 'ml_kit_image_labeling',
+                description: 'With Ml Kit, do you want to label images? (y/n)',
+                default: 'n'
+            }, {
+                name: 'ml_kit_custom_model',
+                description: 'With Ml Kit, do you want to use a custom TensorFlow Lite model? (y/n)',
+                default: 'n'
+            }], function (mlkitErr, mlkitResult) {
+                if (mlkitErr) {
+                    return console.log(mlkitErr);
+                }
+                console.log("result: " + JSON.stringify(result));
+                console.log("mlkitResult: " + JSON.stringify(mlkitResult));
+                for (var attrname in mlkitResult) { result[attrname] = mlkitResult[attrname]; }
+                console.log("mergedResult result: " + JSON.stringify(result));
+                mergeConfig(result);
+                promptQuestionsResult(result);
+                askSaveConfigPrompt();
+          });
+        }
     });
 }
+
 function promptQuestionsResult(result) {
     if (usingiOS) {
         writePodFile(result);
         exposeAdMobSymbols(isSelected(result.admob));
+        writeBuildscriptHook(isSelected(result.crashlytics));
     }
     if (usingAndroid) {
         writeGradleFile(result);
         writeGoogleServiceCopyHook();
-        writeGoogleServiceGradleHook();
+        writeGoogleServiceGradleHook(result);
+        echoAndroidManifestChanges(result);
     }
     console.log('Firebase post install completed. To re-run this script, navigate to the root directory of `nativescript-plugin-firebase` in your `node_modules` folder and run: `npm run config`.');
+}
+
+function echoAndroidManifestChanges(result) {
+    if (isSelected(result.ml_kit)) {
+      var selectedFeatures = [];
+      if (isSelected(result.ml_kit_text_recognition)) {
+        selectedFeatures.push("text");
+      }
+      if (isSelected(result.ml_kit_barcode_scanning)) {
+        selectedFeatures.push("barcode");
+      }
+      if (isSelected(result.ml_kit_face_detection)) {
+        selectedFeatures.push("face");
+      }
+      if (isSelected(result.ml_kit_image_labeling)) {
+        selectedFeatures.push("label");
+      }
+      if (selectedFeatures.length > 0) {
+        console.log('\n######################################################################################################');
+        console.log('Open your app\'s resources/Android/AndroidManifest.xml file and add this (see the demo for an example):');
+        console.log('<meta-data\n' +
+            '    android:name="com.google.firebase.ml.vision.DEPENDENCIES"\n' +
+            '    android:value="' + selectedFeatures.join(',') + '" />');
+        console.log('######################################################################################################\n');
+      }
+    }
 }
 
 function exposeAdMobSymbols(enable) {
@@ -223,42 +295,215 @@ function writePodFile(result) {
     }
     try {
         fs.writeFileSync(directories.ios + '/Podfile',
-`pod 'Firebase', '~> 4.11.0' 
+`pod 'Firebase/Core', '~> 5.1.0' 
 pod 'Firebase/Auth'
 
-# Uncomment if you want to enable Realtime DB
+# Realtime DB
 ` + (!isPresent(result.realtimedb) || isSelected(result.realtimedb) ? `` : `#`) + `pod 'Firebase/Database'
 
-# Uncomment if you want to enable Cloud Firestore
+# Cloud Firestore
 ` + (isSelected(result.firestore) ? `` : `#`) + `pod 'Firebase/Firestore'
 
-# Uncomment if you want to enable Remote Config
+# Remote Config
 ` + (isSelected(result.remote_config) ? `` : `#`) + `pod 'Firebase/RemoteConfig'
 
-# Uncomment if you want to enable Crash Reporting
-` + (isSelected(result.crash_reporting) ? `` : `#`) + `pod 'Firebase/Crash'
+# Crash Reporting
+` + (isSelected(result.crash_reporting) && !isSelected(result.crashlytics) ? `` : `#`) + `pod 'Firebase/Crash'
 
-# Uncomment if you want to enable FCM (Firebase Cloud Messaging)
+# Crashlytics
+` + (isSelected(result.crashlytics) ? `` : `#`) + `pod 'Fabric'
+` + (isSelected(result.crashlytics) ? `` : `#`) + `pod 'Crashlytics'
+` + (!isSelected(result.crashlytics) ? `` : `
+# Crashlytics works best without bitcode
+post_install do |installer|
+    installer.pods_project.targets.each do |target|
+        target.build_configurations.each do |config|
+            config.build_settings['ENABLE_BITCODE'] = "NO"
+            config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = "YES"
+        end
+    end
+end`) + `
+
+# Firebase Cloud Messaging (FCM)
 ` + (isSelected(result.messaging) ? `` : `#`) + `pod 'Firebase/Messaging'
 
-# Uncomment if you want to enable Firebase Storage
+# Firebase Storage
 ` + (isSelected(result.storage) ? `` : `#`) + `pod 'Firebase/Storage'
 
-# Uncomment if you want to enable AdMob
+# AdMob
 ` + (isSelected(result.admob) ? `` : `#`) + `pod 'Firebase/AdMob'
 
-# Uncomment if you want to enable Invites and/or Dynamic Links
+# Invites / Dynamic Links
 ` + (isSelected(result.invites) ? `` : `#`) + `pod 'Firebase/Invites'
 
-# Uncomment if you want to enable Facebook Authentication
+# ML Kit
+` + (isSelected(result.ml_kit) ? `` : `#`) + `pod 'Firebase/MLVision'
+` + (isSelected(result.ml_kit) && isSelected(result.ml_kit_text_recognition) ? `` : `#`) + `pod 'Firebase/MLVisionTextModel'
+` + (isSelected(result.ml_kit) && isSelected(result.ml_kit_barcode_scanning) ? `` : `#`) + `pod 'Firebase/MLVisionBarcodeModel'
+` + (isSelected(result.ml_kit) && isSelected(result.ml_kit_face_detection) ? `` : `#`) + `pod 'Firebase/MLVisionFaceModel'
+` + (isSelected(result.ml_kit) && isSelected(result.ml_kit_image_labeling) ? `` : `#`) + `pod 'Firebase/MLVisionLabelModel'
+` + (isSelected(result.ml_kit) && isSelected(result.ml_kit_custom_model) ? `` : `#`) + `pod 'Firebase/MLModelInterpreter'
+
+# Facebook Authentication
 ` + (isSelected(result.facebook_auth) ? `` : `#`) + `pod 'FBSDKCoreKit'
 ` + (isSelected(result.facebook_auth) ? `` : `#`) + `pod 'FBSDKLoginKit'
 
-# Uncomment if you want to enable Google Authentication
+# Google Authentication
 ` + (isSelected(result.google_auth) ? `` : `#`) + `pod 'GoogleSignIn'`);
         console.log('Successfully created iOS (Pod) file.');
     } catch(e) {
         console.log('Failed to create iOS (Pod) file.');
+        console.log(e);
+    }
+}
+
+/**
+ * Create the iOS build script for uploading dSYM files to Crashlytics
+ *
+ * @param {any} enable Is Crashlytics enabled
+ */
+function writeBuildscriptHook(enable) {
+    var scriptPath = path.join(appRoot, "hooks", "after-prepare", "firebase-crashlytics-buildscript.js");
+
+    if (!enable) {
+        if (fs.existsSync(scriptPath)) {
+            fs.unlinkSync(scriptPath);
+        }
+        return
+    }
+
+    console.log("Install Crashlytics buildscript hook.");
+    try {
+        var scriptContent =
+`const fs = require('fs-extra');
+const path = require('path');
+const xcode = require('xcode');
+
+const pattern1 = /\\n\\s*\\/\\/Crashlytics 1 BEGIN[\\s\\S]*\\/\\/Crashlytics 1 END.*\\n/m;
+const pattern2 = /\\n\\s*\\/\\/Crashlytics 2 BEGIN[\\s\\S]*\\/\\/Crashlytics 2 END.*\\n/m;
+const pattern3 = /\\n\\s*\\/\\/Crashlytics 3 BEGIN[\\s\\S]*\\/\\/Crashlytics 3 END.*\\n/m;
+
+const string1 = \`
+//Crashlytics 1 BEGIN
+#else
+#import <Crashlytics/CLSLogging.h>
+#endif
+//Crashlytics 1 END
+\`;
+
+const string2 = \`
+//Crashlytics 2 BEGIN
+#if DEBUG
+#else
+static int redirect_cls(const char *prefix, const char *buffer, int size) {
+  CLSLog(@"%s: %.*s", prefix, size, buffer);
+  return size;
+}
+
+static int stderr_redirect(void *inFD, const char *buffer, int size) {
+  return redirect_cls("stderr", buffer, size);
+}
+
+static int stdout_redirect(void *inFD, const char *buffer, int size) {
+  return redirect_cls("stdout", buffer, size);
+}
+#endif
+//Crashlytics 2 END
+\`;
+
+const string3 = \`
+//Crashlytics 3 BEGIN
+#if DEBUG
+#else
+  // Per https://docs.fabric.io/apple/crashlytics/enhanced-reports.html#custom-logs :
+  // Crashlytics ensures that all log entries are recorded, even if the very next line of code crashes.
+  // This means that logging must incur some IO. Be careful when logging in performance-critical areas.
+  
+  // As per the note above, enabling this can affect performance if too much logging is present.
+  // stdout->_write = stdout_redirect;
+  
+  // stderr usually only occurs during critical failures;
+  // so it is usually essential to identifying crashes, especially in JS
+  stderr->_write = stderr_redirect;
+#endif
+//Crashlytics 3 END
+\`;
+
+module.exports = function($logger, $projectData, hookArgs) {
+  const platform = hookArgs.platform.toLowerCase();
+  return new Promise(function(resolve, reject) {
+    const isNativeProjectPrepared = !hookArgs.nativePrepare || !hookArgs.nativePrepare.skipNativePrepare;
+    if (isNativeProjectPrepared) {
+      try {
+        if (platform === 'ios') {
+          const sanitizedAppName = path.basename($projectData.projectDir).split('').filter((c) => /[a-zA-Z0-9]/.test(c)).join('');
+
+          // write buildscript for dSYM upload
+          const xcodeProjectPath = path.join($projectData.platformsDir, 'ios', sanitizedAppName + '.xcodeproj', 'project.pbxproj');
+          $logger.trace('Using Xcode project', xcodeProjectPath);
+          if (fs.existsSync(xcodeProjectPath)) {
+            var xcodeProject = xcode.project(xcodeProjectPath);
+            xcodeProject.parseSync();
+            var options = { shellPath: '/bin/sh', shellScript: '\${PODS_ROOT}/Fabric/run' };
+            xcodeProject.addBuildPhase(
+              [], 'PBXShellScriptBuildPhase', 'Configure Crashlytics', undefined, options
+            ).buildPhase;
+            fs.writeFileSync(xcodeProjectPath, xcodeProject.writeSync());
+            $logger.trace('Xcode project written');
+          } else {
+            $logger.error(xcodeProjectPath + ' is missing.');
+            reject()
+          }
+
+          // Logging from stdout/stderr
+          $logger.out('Add iOS crash logging');
+          const mainmPath = path.join($projectData.platformsDir, 'ios', 'internal', 'main.m');
+          if (fs.existsSync(mainmPath)) {
+            let mainmContent = fs.readFileSync(mainmPath).toString();
+            // string1
+            mainmContent = pattern1.test(mainmContent)
+              ? mainmContent.replace(pattern1, string1)
+              : mainmContent.replace(/(\\n#endif\\n)/, string1);
+            // string2
+            mainmContent = pattern2.test(mainmContent)
+              ? mainmContent.replace(pattern2, string2)
+              : mainmContent.replace(/(\\nint main.*)/, string2 + '$1');
+            // string3
+            mainmContent = pattern3.test(mainmContent)
+              ? mainmContent.replace(pattern3, string3)
+              : mainmContent.replace(/(int main.*\\n)/, '$1' + string3 + '\\n');
+            fs.writeFileSync(mainmPath, mainmContent);
+          } else {
+            $logger.error(mainmPath + ' is missing.');
+            reject()
+          }
+
+          resolve();
+        } else {
+          resolve();
+        }
+      } catch (e) {
+        $logger.error('Unknown error during prepare Crashlytics', e);
+        reject();
+      }
+    } else {
+      $logger.trace("Native project not prepared.");
+      resolve();
+    }
+  });
+};
+`;
+        var afterPrepareDirPath = path.dirname(scriptPath);
+        var hooksDirPath = path.dirname(afterPrepareDirPath);
+        if (!fs.existsSync(afterPrepareDirPath)) {
+            if (!fs.existsSync(hooksDirPath)) {
+                fs.mkdirSync(hooksDirPath);
+            }
+            fs.mkdirSync(afterPrepareDirPath);
+        }
+        fs.writeFileSync(scriptPath, scriptContent);
+    } catch(e) {
+        console.log("Failed to install Crashlytics buildscript hook.");
         console.log(e);
     }
 }
@@ -292,6 +537,11 @@ repositories {
 }
 
 def supportVersion = project.hasProperty("supportVersion") ? project.supportVersion : "26.0.0"
+def googlePlayServicesVersion = project.hasProperty('googlePlayServicesVersion') ? project.googlePlayServicesVersion : "15.0.0"
+
+if ( VersionNumber.parse( googlePlayServicesVersion ) < VersionNumber.parse( '15.0.0' ) ) {
+    throw new GradleException(" googlePlayServicesVersion set too low, please update to at least 15.0.0 ( currently set to $googlePlayServicesVersion )");
+}
 
 dependencies {
     compile "com.android.support:appcompat-v7:$supportVersion"
@@ -300,48 +550,55 @@ dependencies {
     compile "com.android.support:design:$supportVersion"
     compile "com.android.support:support-compat:$supportVersion"
 
-    def firebaseVersion = "12.0.1"
-
     // make sure you have these versions by updating your local Android SDK's (Android Support repo and Google repo)
-    compile "com.google.firebase:firebase-core:$firebaseVersion"
-    compile "com.google.firebase:firebase-auth:$firebaseVersion"
+    compile "com.google.firebase:firebase-core:16.0.0"
+    compile "com.google.firebase:firebase-auth:16.0.1"
 
     // for reading google-services.json and configuration
-    def googlePlayServicesVersion = project.hasProperty('googlePlayServicesVersion') ? project.googlePlayServicesVersion : firebaseVersion
     compile "com.google.android.gms:play-services-base:$googlePlayServicesVersion"
 
-    // Uncomment if you want to use the regular Database
-    ` + (!isPresent(result.realtimedb) || isSelected(result.realtimedb) ? `` : `//`) + ` compile "com.google.firebase:firebase-database:$firebaseVersion"
+    // Realtime DB
+    ` + (!isPresent(result.realtimedb) || isSelected(result.realtimedb) ? `` : `//`) + ` compile "com.google.firebase:firebase-database:16.0.1"
 
-    // Uncomment if you want to use 'Cloud Firestore'
-    ` + (isSelected(result.firestore) ? `` : `//`) + ` compile "com.google.firebase:firebase-firestore:$firebaseVersion"
+    // Cloud Firestore
+    ` + (isSelected(result.firestore) ? `` : `//`) + ` compile "com.google.firebase:firebase-firestore:17.0.1"
 
-    // Uncomment if you want to use 'Remote Config'
-    ` + (isSelected(result.remote_config) ? `` : `//`) + ` compile "com.google.firebase:firebase-config:$firebaseVersion"
+    // Remote Config
+    ` + (isSelected(result.remote_config) ? `` : `//`) + ` compile "com.google.firebase:firebase-config:16.0.0"
 
-    // Uncomment if you want to use 'Crash Reporting'
-    ` + (isSelected(result.crash_reporting) ? `` : `//`) + ` compile "com.google.firebase:firebase-crash:$firebaseVersion"
+    // Crash Reporting
+    ` + (isSelected(result.crash_reporting) && !isSelected(result.crashlytics) ? `` : `//`) + ` compile "com.google.firebase:firebase-crash:16.0.0"
 
-    // Uncomment if you want FCM (Firebase Cloud Messaging)
-    ` + (isSelected(result.messaging) ? `` : `//`) + ` compile "com.google.firebase:firebase-messaging:$firebaseVersion"
+    // Crashlytics
+    ` + (isSelected(result.crashlytics) ? `` : `//`) + ` compile "com.crashlytics.sdk.android:crashlytics:2.9.3"
 
-    // Uncomment if you want Google Cloud Storage
-    ` + (isSelected(result.storage) ? `` : `//`) + ` compile "com.google.firebase:firebase-storage:$firebaseVersion"
+    // Firebase Cloud Messaging (FCM)
+    ` + (isSelected(result.messaging) ? `` : `//`) + ` compile "com.google.firebase:firebase-messaging:17.0.0"
 
-    // Uncomment if you want AdMob
-    ` + (isSelected(result.admob) ? `` : `//`) + ` compile "com.google.firebase:firebase-ads:$firebaseVersion"
+    // Cloud Storage
+    ` + (isSelected(result.storage) ? `` : `//`) + ` compile "com.google.firebase:firebase-storage:16.0.1"
 
-    // Uncomment if you need Facebook Authentication
+    // AdMob / Ads
+    ` + (isSelected(result.admob) ? `` : `//`) + ` compile "com.google.firebase:firebase-ads:15.0.1"
+
+    // ML Kit
+    ` + (isSelected(result.ml_kit) ? `` : `//`) + ` compile "com.google.firebase:firebase-ml-vision:16.0.0"
+    ` + (isSelected(result.ml_kit_image_labeling) ? `` : `//`) + ` compile "com.google.firebase:firebase-ml-vision-image-label-model:15.0.0"
+
+    // Facebook Authentication
     ` + (isSelected(result.facebook_auth) ? `` : `//`) + ` compile ("com.facebook.android:facebook-android-sdk:4.+"){ exclude group: 'com.google.zxing' }
 
-    // Uncomment if you need Google Sign-In Authentication
+    // Google Sign-In Authentication
     ` + (isSelected(result.google_auth) ? `` : `//`) + ` compile "com.google.android.gms:play-services-auth:$googlePlayServicesVersion"
 
-    // Uncomment if you need Firebase Invites or Dynamic Links
-    ` + (isSelected(result.invites) ? `` : `//`) + ` compile "com.google.firebase:firebase-invites:$firebaseVersion"
+    // Firebase Invites / Dynamic Links
+    ` + (isSelected(result.invites) ? `` : `//`) + ` compile "com.google.firebase:firebase-invites:16.0.0"
 }
 
 apply plugin: "com.google.gms.google-services"
+
+// Crashlytics
+` + (isSelected(result.crashlytics) ? `` : `//`) + `apply plugin: "io.fabric"
 `);
         console.log('Successfully created Android (include.gradle) file.');
     } catch(e) {
@@ -361,14 +618,32 @@ function writeGoogleServiceCopyHook() {
 var path = require("path");
 var fs = require("fs");
 
-module.exports = function() {
+module.exports = function($logger, $projectData, hookArgs) {
 
-    var sourceGoogleJson = path.join(__dirname, "..", "..", "app", "App_Resources", "Android", "google-services.json");
-    var destinationGoogleJson = path.join(__dirname, "..", "..", "platforms", "android", "google-services.json");
-    if (fs.existsSync(sourceGoogleJson) && fs.existsSync(path.dirname(destinationGoogleJson))) {
-        console.log("Copy " + sourceGoogleJson + " to " + destinationGoogleJson + ".");
-        fs.writeFileSync(destinationGoogleJson, fs.readFileSync(sourceGoogleJson));
-    }
+    return new Promise(function(resolve, reject) {
+        if (hookArgs.platform.toLowerCase() === 'android') {
+            var sourceGoogleJson = path.join($projectData.appResourcesDirectoryPath, "Android", "google-services.json");
+            var destinationGoogleJson = path.join($projectData.platformsDir, "android", "app", "google-services.json");
+            if (fs.existsSync(sourceGoogleJson) && fs.existsSync(path.dirname(destinationGoogleJson))) {
+                $logger.out("Copy " + sourceGoogleJson + " to " + destinationGoogleJson + ".");
+                fs.writeFileSync(destinationGoogleJson, fs.readFileSync(sourceGoogleJson));
+                resolve();
+            } else {
+                $logger.warn("Unable to copy google-services.json.");
+                reject();
+            }
+        } else if (hookArgs.platform.toLowerCase() === 'ios') {
+            var sourceGooglePlist = path.join($projectData.appResourcesDirectoryPath, "iOS", "GoogleService-Info.plist");
+            if (!fs.existsSync(sourceGooglePlist)) {
+                $logger.warn(sourceGooglePlist + " does not exist. Please follow the installation instructions from the documentation");
+                return reject();
+            } else {
+                resolve();
+            }
+        } else {
+            resolve();
+        }
+    });
 };
 `;
         var scriptPath = path.join(appRoot, "hooks", "after-prepare", "firebase-copy-google-services.js");
@@ -387,7 +662,7 @@ module.exports = function() {
     }
 }
 
-function writeGoogleServiceGradleHook() {
+function writeGoogleServiceGradleHook(result) {
     console.log("Install firebase-build-gradle hook.");
     try {
         var scriptContent =
@@ -395,56 +670,72 @@ function writeGoogleServiceGradleHook() {
 var path = require("path");
 var fs = require("fs");
 
-module.exports = function() {
+module.exports = function($logger, $projectData) {
 
-    console.log("Configure firebase");
-    var buildGradlePath = path.join(__dirname, "..", "..", "platforms", "android", "build.gradle");
-    if (fs.existsSync(buildGradlePath)) {
-        var buildGradleContent = fs.readFileSync(buildGradlePath).toString();
+    return new Promise(function(resolve, reject) {
+        $logger.out("Configure firebase");
+        let projectBuildGradlePath = path.join($projectData.platformsDir, "android", "build.gradle");
+        if (fs.existsSync(projectBuildGradlePath)) {
+            let buildGradleContent = fs.readFileSync(projectBuildGradlePath).toString();
 
-        // already at 3.1.1?
-        if (buildGradleContent.indexOf('classpath "com.google.gms:google-services:3.1.1"') != -1) {
-            return;
+            if (buildGradleContent.indexOf("fabric.io") === -1) {
+                let repositoriesNode = buildGradleContent.indexOf("repositories", 0);
+                if (repositoriesNode > -1) {
+                    repositoriesNode = buildGradleContent.indexOf("}", repositoriesNode);
+                    buildGradleContent = buildGradleContent.substr(0, repositoriesNode - 1) + '	    maven { url "https://maven.fabric.io/public" }\\n' + buildGradleContent.substr(repositoriesNode - 1);
+                }
+
+                let dependenciesNode = buildGradleContent.indexOf("dependencies", 0);
+                if (dependenciesNode > -1) {
+                    dependenciesNode = buildGradleContent.indexOf("}", dependenciesNode);
+                    buildGradleContent = buildGradleContent.substr(0, dependenciesNode - 1) + '	    classpath "io.fabric.tools:gradle:1.25.1"\\n' + buildGradleContent.substr(dependenciesNode - 1);
+                }
+            }
+
+            let gradlePattern = /classpath ('|")com\\.android\\.tools\\.build:gradle:\\d+\\.\\d+\\.\\d+('|")/;
+            let googleServicesPattern = /classpath ('|")com\\.google\\.gms:google-services:\\d+\\.\\d+\\.\\d+('|")/;
+            let latestGoogleServicesPlugin = 'classpath "com.google.gms:google-services:4.0.1"';
+            if (googleServicesPattern.test(buildGradleContent)) {
+                buildGradleContent = buildGradleContent.replace(googleServicesPattern, latestGoogleServicesPlugin);
+            } else {
+                buildGradleContent = buildGradleContent.replace(gradlePattern, function (match) {
+                    return match + '\\n        ' + latestGoogleServicesPlugin;
+                });
+            }
+    
+            fs.writeFileSync(projectBuildGradlePath, buildGradleContent);
         }
 
-        // upgrade 3.1.0 to 3.1.1?
-        if (buildGradleContent.indexOf('classpath "com.google.gms:google-services:3.1.0"') != -1) {
-            buildGradleContent = buildGradleContent.replace('classpath "com.google.gms:google-services:3.1.0"', 'classpath "com.google.gms:google-services:3.1.1"');
-            fs.writeFileSync(buildGradlePath, buildGradleContent);
-            return;
+        let projectAppBuildGradlePath = path.join($projectData.platformsDir, "android", "app", "build.gradle");
+        if (fs.existsSync(projectAppBuildGradlePath)) {
+          let appBuildGradleContent = fs.readFileSync(projectAppBuildGradlePath).toString();
+          if (appBuildGradleContent.indexOf("buildMetadata.finalizedBy(copyMetadata)") === -1) {
+            appBuildGradleContent = appBuildGradleContent.replace("ensureMetadataOutDir.finalizedBy(buildMetadata)", "ensureMetadataOutDir.finalizedBy(buildMetadata)\\n\\t\\tbuildMetadata.finalizedBy(copyMetadata)");
+            appBuildGradleContent += \`
+task copyMetadata {
+  doLast {
+    copy {
+        from "$projectDir/src/main/assets/metadata"
+        def toDir = project.hasProperty("release") ? "release" : "debug";
+        if (new File("$projectDir/build/intermediates/assets").listFiles() != null) {
+          toDir = new File("$projectDir/build/intermediates/assets").listFiles()[0].name
+          if (toDir != 'debug' && toDir != 'release') {
+            toDir += "/release"
+          }
         }
-
-        // upgrade 3.0.0 to 3.1.1?
-        if (buildGradleContent.indexOf('classpath "com.google.gms:google-services:3.0.0"') != -1) {
-            buildGradleContent = buildGradleContent.replace('classpath "com.google.gms:google-services:3.0.0"', 'classpath "com.google.gms:google-services:3.1.1"');
-            fs.writeFileSync(buildGradlePath, buildGradleContent);
-            return;
-        }
-
-        var search = -1;
-
-        search = buildGradleContent.indexOf("repositories", 0);
-        if (search == -1) {
-            return;
-        }
-
-        search = buildGradleContent.indexOf("dependencies", search);
-        if (search == -1) {
-            return;
-        }
-
-        search = buildGradleContent.indexOf("}", search);
-        if (search == -1) {
-            return;
-        }
-
-        buildGradleContent = buildGradleContent.substr(0, search - 1) + '    classpath "com.google.gms:google-services:3.1.1"\\n    ' + buildGradleContent.substr(search - 1);
-
-        fs.writeFileSync(buildGradlePath, buildGradleContent);
+        into "$projectDir/build/intermediates/assets/" + toDir + "/metadata"
     }
+  }
+}\`;
+            fs.writeFileSync(projectAppBuildGradlePath, appBuildGradleContent);
+          }
+        }
+
+        resolve();
+    });
 };
 `;
-        console.log("Writing 'firebase-build-gradle.js' to " + appRoot + "/hooks/after-prepare");
+        console.log("Writing 'firebase-build-gradle.js' to " + appRoot + "hooks/after-prepare");
         var scriptPath = path.join(appRoot, "hooks", "after-prepare", "firebase-build-gradle.js");
         fs.writeFileSync(scriptPath, scriptContent);
     } catch(e) {

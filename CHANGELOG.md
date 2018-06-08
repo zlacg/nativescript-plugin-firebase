@@ -3,11 +3,51 @@
 [Firebase iOS SDK Changelog](https://firebase.google.com/support/release-notes/ios)
 [Firebase Android SDK Changelog](https://firebase.google.com/support/release-notes/android)
 
+## 6.1.1 (2018, June 8)
+[Fixes & Enhancements](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/milestone/60?closed=1)
+
+
+## 6.1.0 (2018, June 7)
+[Fixes & Enhancements](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/milestone/57?closed=1)
+
+
+## 6.0.2 (2018, May 16)
+
+### Fixes
+- [#710](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/710) If ML Kit Face detection is selected, but not Text detection, then the iOS build will fail 
+
+
+## 6.0.1 (2018, May 16)
+
+### New
+- [#699](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/699) Add ML Kit support
+
+### Fixes
+- [#706](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/706) AdMob on Android may fail in NativeScript 4 because frame.topmost() is undefined
+
+
+## 5.3.1 (2018, April 26)
+
+### Fixes
+- [#684](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/684) [iOS] New Version in NPM has podfile error during build
+- [#685](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/685) error TS1036: Statements are not allowed in ambient contexts
+
+
+## 5.3.0 (2018, April 25)
+
+### New
+- [#549](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/549) Basic integration of Crashlytics for iOS
+- [#647](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/647) Allow standalone Analytics import
+
+### Fixes
+- [#321](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/321) Crash reporting never fill
+- [#543](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/543) Firebase crashlytics
+- [#676](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/676) Crash logs are not appearing for android in google firebase console
+
 
 ## 5.2.0 (2018, April 2)
 
 ### New
-
 - [#648](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/648) Implement setUserId for analytics
 - [#665](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/665) Add Email Link Authentication
 - [#666](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/666) Add 'keywords' support to AdMob banners
@@ -23,14 +63,12 @@
 ## 5.1.8 (2018, March 1)
 
 ### New
-
 - [#633](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/633) The plugin is too picky about the name of the entitlements file
 
 
 ## 5.1.7 (2018, February 11)
 
 ### New
-
 - [#624](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/624) Get push key avoiding .then()
 
 
@@ -49,7 +87,6 @@
 ## 5.1.4 (2018, January 23)
 
 ### New
-
 - [#615](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/615) Conflict with nativescript-barcodescanner
 
 ### Fixes
@@ -63,10 +100,8 @@
 ## 5.1.3 (2018, January 15)
 
 ### New
-
 - [#170](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/170) Need a way to unregister push notification from Firebase
 - [#609](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/609) When Google Play Services is not available, show a dialog asking the user to install it
-
 
 ### Fixes
 - [#577](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/577) Firestore References can't be parsed

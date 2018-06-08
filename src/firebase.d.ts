@@ -113,8 +113,9 @@ export interface InitOptions {
 
   /**
    * Get notified when a dynamic link was used to launch the app. Alternatively use addOnDynamicLinkReceivedCallback.
+   * TODO iOS seems to return an object; not a string
    */
-  onDynamicLinkCallback?: (url: string) => void;
+  onDynamicLinkCallback?: (data: DynamicLinkData) => void;
 }
 
 export interface QueryRangeOption {
@@ -191,7 +192,7 @@ export interface FirebaseEmailLinkActionCodeSettings {
     packageName: string;
     installApp?: false;
     minimumVersion?: string;
-  }
+  };
 }
 
 export interface FirebaseEmailLinkLoginOptions extends FirebaseEmailLinkActionCodeSettings {
@@ -233,6 +234,10 @@ export interface FirebaseCustomLoginOptions {
   tokenProviderFn?: () => Promise<String>;
 }
 
+export interface LoginIOSOptions {
+  controller?: any;
+}
+
 /**
  * The options object passed into the login function.
  */
@@ -244,6 +249,7 @@ export interface LoginOptions {
   googleOptions?: FirebaseGoogleLoginOptions;
   facebookOptions?: FirebaseFacebookLoginOptions;
   customOptions?: FirebaseCustomLoginOptions;
+  ios?: LoginIOSOptions;
 
   /**
    * @deprecated Please use the 'passwordOptions?: FirebasePasswordLoginOptions' object instead.
@@ -422,6 +428,11 @@ export interface GetRemoteConfigResult {
   properties: Object;
 }
 
+export interface DynamicLinkData {
+  url: string;
+  minimumAppVersion: string;
+}
+
 /**
  * The returned object in the callback handler of the addOnMessageReceivedCallback function.
  *
@@ -493,6 +504,11 @@ export interface UploadFileOptions {
 
 export interface UploadFileResult {
   name: string;
+  contentType: string;
+  created: Date;
+  updated: Date;
+  bucket: string;
+  size: number;
 }
 
 export interface DownloadFileOptions {
@@ -694,55 +710,6 @@ export namespace admob {
   function hideBanner(): Promise<any>;
 }
 
-// Analytics module
-export namespace analytics {
-  export interface LogEventParameter {
-    key: string;
-    value: string;
-  }
-
-  export interface LogEventOptions {
-    /**
-     * The name of the event. You can use any name, but it's recommended to use one of
-     * the predefined constants. These values are the same for both iOS and Android, so
-     * for the complete list see https://firebase.google.com/docs/reference/android/com/google/firebase/analytics/FirebaseAnalytics.Event.html
-     */
-    key: string;
-    /**
-     * Each (predefined) event has its own set of optional parameters, see
-     * https://firebase.google.com/docs/reference/android/com/google/firebase/analytics/FirebaseAnalytics.Param
-     * Example:
-     *
-     *  parameters: [{
-             *    key: "item_name",
-             *    value: "abc"
-             *  }, ..]
-     */
-    parameters?: Array<LogEventParameter>;
-  }
-
-  export interface SetUserIdOptions {
-    userId: string;
-  }
-
-  export interface SetUserPropertyOptions {
-    key: string;
-    value: string;
-  }
-
-  export interface SetScreenNameOptions {
-    screenName: string;
-  }
-
-  function logEvent(options: LogEventOptions): Promise<any>;
-
-  function setUserId(options: SetUserIdOptions): Promise<any>;
-
-  function setUserProperty(options: SetUserPropertyOptions): Promise<any>;
-
-  function setScreenName(options: SetScreenNameOptions): Promise<any>;
-}
-
 // Invites module
 export namespace invites {
 
@@ -871,6 +838,10 @@ export namespace firestore {
     doc(documentPath?: string): DocumentReference;
 
     add(data: DocumentData): Promise<DocumentReference>;
+  }
+
+  export class FieldValue {
+    static serverTimestamp: () => "SERVER_TIMESTAMP";
   }
 
   export interface QuerySnapshot {
