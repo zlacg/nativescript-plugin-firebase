@@ -833,6 +833,14 @@ export namespace firestore {
     data(): DocumentData;
   }
 
+  export interface DocumentChange {
+    newIndex: int;
+    oldIndex: int;
+    type: string;
+
+    docSnapshot: DocumentSnapshot;
+  }
+
   export interface DocumentReference {
     id: string;
     collection: (collectionPath: string) => CollectionReference;
@@ -866,8 +874,10 @@ export namespace firestore {
   }
 
   export interface QuerySnapshot {
+    docChanges: firestore.DocumentChange[];
     docSnapshots: firestore.DocumentSnapshot[];
 
+    forEachDocChange(callback: (result: DocumentChange) => void, thisArg?: any): void
     forEach(callback: (result: DocumentSnapshot) => void, thisArg?: any): void;
   }
 

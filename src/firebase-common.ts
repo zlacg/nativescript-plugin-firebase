@@ -203,10 +203,19 @@ export class DocumentSnapshot implements firestore.DocumentSnapshot {
   }
 }
 
+export class DocumentChange implements firestore.DocumentChange {
+  constructor(public newIndex: number, public oldIndex: number, public type: string, public docSnapshot: firestore.DocumentSnapshot) {}
+}
+
 export class QuerySnapshot implements firestore.QuerySnapshot {
+  public docChanges: firestore.DocumentChange[];
   public docSnapshots: firestore.DocumentSnapshot[];
 
+  forEachDocChange(callback: (result: firestore.DocumentChange) => void, thisArg?: any): void {
+    this.docChanges.map(docChange => callback(docChange));
+  }
+
   forEach(callback: (result: firestore.DocumentSnapshot) => void, thisArg?: any): void {
-    this.docSnapshots.map(snapshot => callback(snapshot));
+    this.docSnapshots.map(docSnapshot => callback(docSnapshot));
   }
 }
